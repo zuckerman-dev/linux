@@ -1,0 +1,38 @@
+--- kernel/futex.c
++++ kernel/futex.c
+@@ -1642,14 +1645,15 @@ static int wake_futex_pi(u32 __user *uaddr, u32 uval, struct futex_pi_state *pi_
+ 		 * not fail.
+ 		 */
+ 		pi_state_update_owner(pi_state, new_owner);
+-		postunlock = __rt_mutex_futex_unlock(&pi_state->pi_mutex, &wake_q);
++		postunlock = __rt_mutex_futex_unlock(&pi_state->pi_mutex, &wake_q,
++						     &wake_sleeper_q);
+ 	}
+ 
+ out_unlock:
+ 	raw_spin_unlock_irq(&pi_state->pi_mutex.wait_lock);
+ 
+ 	if (postunlock)
+-		rt_mutex_postunlock(&wake_q);
++		rt_mutex_postunlock(&wake_q, &wake_sleeper_q);
+ 
+ 	return ret;
+ }
+@@ -3456,14 +3523,15 @@ static int futex_wait_requeue_pi(u32 __user *uaddr, unsigned int flags,
+ 		 * did a lock-steal - fix up the PI-state in that case.
+ 		 */
+ 		if (q.pi_state && (q.pi_state->owner != current)) {
+-			spin_lock(q.lock_ptr);
++			spin_lock(&hb2->lock);
++			BUG_ON(&hb2->lock != q.lock_ptr);
+ 			ret = fixup_pi_state_owner(uaddr2, &q, current);
+ 			/*
+ 			 * Drop the reference to the pi state which
+ 			 * the requeue_pi() code acquired for us.
+ 			 */
+ 			put_pi_state(q.pi_state);
+-			spin_unlock(q.lock_ptr);
++			spin_unlock(&hb2->lock);
+ 			/*
+ 			 * Adjust the return value. It's either -EFAULT or
+ 			 * success (1) but the caller expects 0 for success.
